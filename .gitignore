@@ -1,0 +1,14 @@
+*.py[cod]
+__pycache__/
+.pytest_cache/
+.venv/
+.env
+*.jks
+*.keystore
+local.properties
+.gradle/
+**/build/
+*.apk
+*.aab
+google-services.json
+secrets/
