@@ -1,0 +1,3 @@
+-keepattributes Signature,*Annotation*
+-keep class com.aiemail.os.data.** { *; }
+-keep class com.google.gson.** { *; }

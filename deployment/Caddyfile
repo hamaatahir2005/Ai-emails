@@ -1,0 +1,10 @@
+# Replace email.example.com; run Caddy on the Docker host with ports 80/443.
+email.example.com {
+    encode zstd gzip
+    request_body {
+        max_size 6MB
+    }
+    header Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    reverse_proxy 127.0.0.1:8000
+    # Avoid logging signed unsubscribe query strings or request bodies.
+}

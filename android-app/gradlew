@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+set -eu
+if command -v gradle >/dev/null 2>&1; then
+  exec gradle "$@"
+fi
+echo "Gradle 8.11.1 is required. Install it or run the GitHub Actions Android workflow." >&2
+echo "Then run: gradle wrapper --gradle-version 8.11.1 && ./gradlew assembleDebug" >&2
+exit 1

@@ -1,0 +1,2 @@
+full_name,email,company_name,business_category,country,language,consent_status,consent_timestamp,consent_source,segment
+Developer Test,developer@example.com,Example Company,Software,Iraq,ckb,true,2026-01-01T12:00:00Z,REPLACE WITH ACTUAL DOCUMENTED OPT-IN EVIDENCE,test
