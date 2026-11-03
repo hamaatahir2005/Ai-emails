@@ -70,11 +70,19 @@ def send_message(message_id):
                         bool(recipient.replied_at), message.sequence > 0):
             message.state = "suppressed"
             return
+        if message.sequence > 0 and customer.last_email_date and customer.last_email_date > now() - timedelta(days=2):
+            message.due_at = customer.last_email_date + timedelta(days=2)
+            return
         # Fail closed if Redis is unavailable; Redis counts every outbound attempt.
         redis = Redis.from_url(config().redis_url)
-        minute = int(now().timestamp()) // 60
-        script = "local n=redis.call('INCR',KEYS[1]); if n==1 then redis.call('EXPIRE',KEYS[1],120) end; return n"
-        hits = redis.eval(script, 1, "brevo:rate:" + str(minute))
+        millis = int(now().timestamp() * 1000)
+        script = """redis.call('ZREMRANGEBYSCORE',KEYS[1],'-inf',ARGV[1]-60000)
+local count=redis.call('ZCARD',KEYS[1])
+if count>=tonumber(ARGV[2]) then return count+1 end
+redis.call('ZADD',KEYS[1],ARGV[1],ARGV[3])
+redis.call('PEXPIRE',KEYS[1],61000)
+return count+1"""
+        hits = redis.eval(script, 1, "brevo:rate", millis, settings.provider_per_minute, str(uuid.uuid4()))
         if hits > settings.provider_per_minute:
             return
         if not reserve(db, settings, campaign, now()):
@@ -85,20 +93,35 @@ def send_message(message_id):
         message.state = "sending"
         message.attempts += 1
         message.sent_at = now()
+    deliver_claimed(message_id)
+
+def deliver_claimed(message_id):
     # Reservation must commit BEFORE network I/O. Recheck eligibility under the
     # same global lock held across the provider call so unsubscribe and stop
     # serialize with outbound requests.
     with Session.begin() as db:
         settings = locked_settings(db)
         message = db.get(Message, message_id)
-        if message.state != "sending":
+        if not message or message.state != "sending":
             return
         recipient = db.get(Recipient, message.recipient_id)
         campaign = db.get(Campaign, recipient.campaign_id)
         customer = db.get(Customer, recipient.customer_id)
-        if settings.emergency_stop or campaign.status != "running" or not eligible(
-            customer, db.get(Suppression, email_hash(customer.email)) is not None, bool(recipient.replied_at), message.sequence > 0):
+        if campaign.status == "cancelled":
+            message.state = "cancelled"
+            return
+        if settings.emergency_stop or campaign.status != "running":
+            message.state = "queued"
+            return
+        if not eligible(customer, db.get(Suppression, email_hash(customer.email)) is not None, bool(recipient.replied_at), message.sequence > 0):
             message.state = "suppressed"
+            return
+        if not in_window(settings, now()):
+            message.state = "queued"
+            return
+        if campaign.approval_digest != digest(campaign):
+            message.state = "uncertain"
+            pause(db, campaign, "Approved content changed before dispatch")
             return
         template = {"subject": campaign.subject, "body": campaign.body} if message.sequence == 0 else campaign.followups[message.sequence - 1]
         link = config().public_url + "/unsubscribe/" + message.id + "?token=" + unsubscribe_token(message.id)
@@ -130,7 +153,8 @@ def send_message(message_id):
         except CredentialsError:
             message.state, message.error = "failed", "Provider credentials need attention"
             settings.emergency_stop = True
-            pause(db, campaign, message.error)
+            for affected in db.scalars(select(Campaign).where(Campaign.status.in_(["running", "scheduled"]))):
+                pause(db, affected, message.error)
             notify(db, "credentials", message.error)
         except UncertainDelivery:
             message.state, message.error = "uncertain", "Acceptance unknown; manual provider reconciliation required"

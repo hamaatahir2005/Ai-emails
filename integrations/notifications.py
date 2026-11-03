@@ -10,7 +10,7 @@ def deliver_notifications():
         if not settings or not settings.notifications_enabled:
             return
         if not firebase_admin._apps:
-            firebase_admin.initialize_app()
+            firebase_admin.initialize_app(options={"httpTimeout": 30})
         devices = list(db.scalars(select(Device).join(User).where(User.disabled.is_(False))))
         for notice in db.scalars(select(Notification).where(Notification.delivered.is_(False)).limit(50).with_for_update(skip_locked=True)):
             # Mark delivered only when there are devices and all valid-device calls succeed.

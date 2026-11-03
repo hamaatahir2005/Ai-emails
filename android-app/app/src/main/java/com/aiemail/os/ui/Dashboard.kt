@@ -69,7 +69,7 @@ fun AnalyticsScreen(vm: OsViewModel) {
     var event by remember { mutableStateOf("delivered") }
     var selected by remember { mutableIntStateOf(-1) }
     val series = data.getAsJsonArray("series")?.map { it.asJsonObject } ?: emptyList()
-    val end = LocalDate.now()
+    val end = runCatching { LocalDate.parse(data.text("today")) }.getOrElse { LocalDate.now() }
     val dates = if (monthly) (0..11).map { YearMonth.from(end).minusMonths((11 - it).toLong()).toString() }
                 else (0..29).map { end.minusDays((29 - it).toLong()).toString() }
     val counts = dates.map { date ->

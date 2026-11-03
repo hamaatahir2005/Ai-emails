@@ -24,7 +24,7 @@ async def secure_headers(request: Request, call_next):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Cache-Control"] = "no-store"
     response.headers["Referrer-Policy"] = "no-referrer"
-    response.headers["Content-Security-Policy"] = "default-src 'none'; form-action 'self'; frame-ancestors 'none'"
+    response.headers["Content-Security-Policy"] = ("default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; img-src 'self' data: https://fastapi.tiangolo.com; frame-ancestors 'none'" if request.url.path in {"/docs", "/redoc"} else "default-src 'none'; form-action 'self'; frame-ancestors 'none'")
     return response
 
 @app.exception_handler(IntegrityError)
@@ -185,7 +185,15 @@ def suppressions(user=Depends(admin), db=Depends(database)):
 
 @app.get("/campaigns")
 def campaigns(user=Depends(current_user), db=Depends(database)):
-    return [view(c) for c in db.scalars(select(Campaign).order_by(Campaign.id.desc()).limit(500))]
+    result = []
+    for campaign in db.scalars(select(Campaign).order_by(Campaign.id.desc()).limit(500)):
+        counts = dict(db.execute(select(Event.kind, func.count(func.distinct(Event.message_id))).join(Message).join(Recipient).where(Recipient.campaign_id == campaign.id).group_by(Event.kind)).all())
+        failed = db.scalar(select(func.count()).select_from(Message).join(Recipient).where(Recipient.campaign_id == campaign.id, Message.state == "failed"))
+        total = db.scalar(select(func.count()).select_from(Recipient).where(Recipient.campaign_id == campaign.id))
+        result.append({**view(campaign), "total_recipients": total, "sent_count": counts.get("sent", 0),
+            "delivered_count": counts.get("delivered", 0), "failed_count": failed + counts.get("hard_bounced", 0),
+            "unsubscribed_count": counts.get("unsubscribed", 0)})
+    return result
 
 @app.post("/campaigns", status_code=201)
 def create_campaign(data: CampaignInput, user=Depends(current_user), db=Depends(database)):
@@ -312,11 +320,9 @@ def ai_generate(data: Generate, user=Depends(current_user), db=Depends(database)
             instruction=data.instruction, language=data.language)
     except Exception:
         raise HTTPException(502, "AI generation failed; review Gemini configuration and retry")
-    counter = db.scalar(select(Counter).where(Counter.name == "ai_generated").with_for_update())
-    if counter is None:
-        counter = Counter(name="ai_generated", value=0)
-        db.add(counter)
-    counter.value += 1
+    from sqlalchemy.dialects.postgresql import insert
+    db.execute(insert(Counter).values(name="ai_generated", value=1).on_conflict_do_update(
+        index_elements=[Counter.name], set_={"value": Counter.value + 1}))
     audit(db, user, "ai_generated", campaign.id)
     db.commit()
     return {**result, "requires_human_review": True}
@@ -348,6 +354,12 @@ def settings_put(data: SettingsInput, user=Depends(admin), db=Depends(database))
         value = getattr(data, key)
         if value is not None:
             setattr(settings, key, encrypt(value) if value else "")
+    if not settings.dns_confirmed or not settings.brevo_key:
+        settings.emergency_stop = True
+    if settings.emergency_stop:
+        for campaign in db.scalars(select(Campaign).where(Campaign.status.in_(["running", "scheduled"]))):
+            campaign.status, campaign.pause_reason = "paused", "Sending disabled in organization settings"
+        notify(db, "paused", "Organization sending is stopped")
     audit(db, user, "settings_updated")
     db.commit()
     return {"saved": True}
@@ -403,13 +415,21 @@ def analytics(campaign_id: int | None = None, days: int = 30, user=Depends(curre
     if campaign_id is not None:
         message_query = message_query.where(Recipient.campaign_id == campaign_id)
     states = dict(db.execute(message_query.group_by(Message.state)).all())
-    daily_query = select(func.date(Event.occurred_at), Event.kind, func.count(func.distinct(Event.message_id))).join(Message).join(Recipient).where(Event.occurred_at >= now() - timedelta(days=days))
+    local_date = func.date(func.timezone(settings.timezone, Event.occurred_at))
+    daily_query = select(local_date, Event.kind, func.count(func.distinct(Event.message_id))).join(Message).join(Recipient).where(Event.occurred_at >= now() - timedelta(days=days))
     if campaign_id is not None:
         daily_query = daily_query.where(Recipient.campaign_id == campaign_id)
-    series = [{"date": str(day), "kind": kind, "count": count} for day, kind, count in db.execute(daily_query.group_by(func.date(Event.occurred_at), Event.kind)).all()]
+    series = [{"date": str(day), "kind": kind, "count": count} for day, kind, count in db.execute(daily_query.group_by(local_date, Event.kind)).all()]
+    from datetime import datetime, time, timezone
+    day_start = datetime.combine(today, time.min, ZoneInfo(settings.timezone)).astimezone(timezone.utc)
+    day_end = datetime.combine(today + timedelta(days=1), time.min, ZoneInfo(settings.timezone)).astimezone(timezone.utc)
+    sent_query = select(func.count(func.distinct(Event.message_id))).join(Message).join(Recipient).where(Event.kind == "sent", Event.occurred_at >= day_start, Event.occurred_at < day_end)
+    if campaign_id is not None:
+        sent_query = sent_query.where(Recipient.campaign_id == campaign_id)
+    sent_today = db.scalar(sent_query)
     ai = db.get(Counter, "ai_generated")
-    return {"total_customers": db.scalar(select(func.count()).select_from(Customer)),
-        "emails_sent_today": counts.get("sent", 0) if campaign_id is not None else db.scalar(select(func.count(func.distinct(Event.message_id))).where(Event.kind == "sent", func.date(Event.occurred_at) == today)),
+    return {"today": str(today), "timezone": settings.timezone, "total_customers": db.scalar(select(func.count()).select_from(Customer)),
+        "emails_sent_today": sent_today,
         "daily_reserved": usage.reserved if usage else 0,
         "remaining_daily_capacity": max(0, min(settings.daily_limit, settings.provider_daily_limit) - (usage.reserved if usage else 0)),
         "delivered": counts.get("delivered", 0), "failed": states.get("failed", 0) + counts.get("hard_bounced", 0),
@@ -463,9 +483,25 @@ async def brevo_webhook(request: Request, authorization: str = Header(default=""
     customer = db.get(Customer, recipient.customer_id)
     if payload.get("email", "").lower() != customer.email:
         raise HTTPException(422, "Event recipient mismatch")
-    db.add(Event(id=event_id, message_id=message.id, kind=kind))
+    occurred_at = now()
+    stamp = payload.get("ts_event", payload.get("ts"))
+    if isinstance(stamp, (int, float)):
+        try:
+            from datetime import datetime, timezone
+            observed = datetime.fromtimestamp(stamp, timezone.utc)
+            if observed <= now() + timedelta(minutes=5):
+                occurred_at = observed
+        except (ValueError, OverflowError, OSError):
+            raise HTTPException(422, "Invalid event timestamp")
+    db.add(Event(id=event_id, message_id=message.id, kind=kind, occurred_at=occurred_at))
     if kind in {"hard_bounced", "complained", "unsubscribed", "blocked"}:
         suppress(db, customer, "unsubscribed" if kind == "unsubscribed" else kind)
+        if kind == "complained":
+            settings = db.get(Settings, 1)
+            settings.emergency_stop = True
+            for affected in db.scalars(select(Campaign).where(Campaign.status.in_(["running", "scheduled"]))):
+                affected.status, affected.pause_reason = "paused", "Spam complaint: organization sending stopped"
+            notify(db, "paused", "A spam complaint stopped organization sending")
         campaign = db.get(Campaign, recipient.campaign_id)
         if campaign.status in {"running", "scheduled"}:
             campaign.status, campaign.pause_reason = "paused", "Delivery/compliance event: " + kind
@@ -486,6 +522,9 @@ def unsubscribe_customer(db, message_id, signature):
         recipient = db.get(Recipient, message.recipient_id)
         customer = db.get(Customer, recipient.customer_id)
         suppress(db, customer, "unsubscribed")
+        event_id = hashlib.sha256((message.id + ":unsubscribed").encode()).hexdigest()
+        if not db.get(Event, event_id):
+            db.add(Event(id=event_id, message_id=message.id, kind="unsubscribed"))
         audit(db, None, "unsubscribed", customer.id)
     db.commit()
 
@@ -511,6 +550,8 @@ def test_campaign(campaign_id: int, user=Depends(admin), db=Depends(database)):
         raise HTTPException(502, "Unable to verify your test address")
     if not verified:
         raise HTTPException(422, "Your account email must be an active verified Brevo sender")
+    if not settings.dns_confirmed or not settings.postal_address or not Brevo(decrypt(settings.brevo_key)).verify_sender(settings.sender_email):
+        raise HTTPException(422, "Configure and verify the sending identity first")
     customer = db.scalar(select(Customer).where(Customer.email == user.email))
     if not customer or not customer.consent_status or db.get(Suppression, email_hash(customer.email)):
         raise HTTPException(422, "Add your verified account email with documented test consent first")

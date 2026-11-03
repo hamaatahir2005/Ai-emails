@@ -19,6 +19,7 @@ fun CampaignsScreen(vm: OsViewModel) {
     val campaigns by vm.campaigns.collectAsStateWithLifecycle()
     val selected by vm.selectedCampaign.collectAsStateWithLifecycle()
     val preview by vm.preview.collectAsStateWithLifecycle()
+    val history by vm.history.collectAsStateWithLifecycle()
     var editor by remember { mutableStateOf(false) }
     var editValue by remember { mutableStateOf<JsonObject?>(null) }
     var customerId by remember { mutableStateOf("") }
@@ -50,12 +51,16 @@ fun CampaignsScreen(vm: OsViewModel) {
                     Text(campaign.text("pause_reason"))
                     Text(campaign.text("subject"), style = MaterialTheme.typography.titleMedium)
                     Text(campaign.text("body"))
+                    Text(stringResource(R.string.total_customers) + ": " + campaign.text("total_recipients"))
+                    Text(stringResource(R.string.delivered) + ": " + campaign.text("delivered_count"))
+                    Text(stringResource(R.string.failed) + ": " + campaign.text("failed_count"))
+                    TextButton(onClick = { vm.messageStatus(id) }) { Text(stringResource(R.string.history)) }
                     Field(R.string.customer_id, customerId) { customerId = it }
                     OutlinedButton(onClick = { customerId.toIntOrNull()?.let { vm.preview(id, it) } }, enabled = customerId.toIntOrNull() != null) { Text(stringResource(R.string.preview)) }
                     if (status == "draft") {
                         Field(R.string.instruction, instruction) { instruction = it }
                         Field(R.string.language, language) { language = it }
-                        OutlinedButton(onClick = { vm.generate(id, language, instruction.ifBlank { "Create a professional introduction" }) }) { Text(stringResource(R.string.generate)) }
+                        OutlinedButton(onClick = { vm.generate(id, language, instruction.ifBlank { "Create a professional introduction" }, customerId.toIntOrNull()) }) { Text(stringResource(R.string.generate)) }
                         OutlinedButton(onClick = { editValue = campaign; editor = true }) { Text(stringResource(R.string.edit)) }
                         Button(onClick = { confirmAction = "submit" }) { Text(stringResource(R.string.submit)) }
                     }
@@ -78,6 +83,9 @@ fun CampaignsScreen(vm: OsViewModel) {
                 dismissButton = { TextButton(onClick = { confirmAction = null }) { Text(stringResource(R.string.cancel)) } })
         }
     }
+    if (history.isNotEmpty()) AlertDialog(onDismissRequest = { vm.history.value = "" },
+        text = { androidx.compose.foundation.text.selection.SelectionContainer { Text(history, modifier = Modifier.heightIn(max = 400.dp).verticalScrollCompat()) } },
+        confirmButton = { TextButton(onClick = { vm.history.value = "" }) { Text(stringResource(R.string.close)) } })
     if (editor) CampaignForm(editValue, onDismiss = { editor = false }, onSave = { data ->
         vm.saveCampaign(data, editValue?.text("id")?.toIntOrNull()); editor = false
     })

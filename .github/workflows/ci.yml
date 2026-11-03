@@ -1,14 +1,14 @@
 name: Validate and build
 on:
   push:
-    branches: [main, "codex/**"]
+    branches: [main]
   pull_request:
   workflow_dispatch:
 permissions:
   contents: read
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 jobs:
   backend:
     runs-on: ubuntu-latest

@@ -141,3 +141,43 @@ def test_analytics_does_not_invent_metrics(client, auth):
 def test_export_formula_escaping():
     from backend.app.services import csv_document
     assert "'=HYPERLINK" in csv_document([{"name": "=HYPERLINK(x)"}], ["name"])
+
+def test_approval_verifies_sender_and_freezes_recipients(client, auth, contact, campaign_data, db, monkeypatch):
+    from backend.app.security import encrypt
+    settings = db.get(Settings, 1)
+    settings.brevo_key = encrypt("test-only-brevo-key")
+    db.commit()
+    client.post("/customers", headers=auth, json=contact)
+    campaign = client.post("/campaigns", headers=auth, json=campaign_data).json()
+    path = "/campaigns/" + str(campaign["id"])
+    assert client.post(path + "/submit", headers=auth).status_code == 200
+    monkeypatch.setattr("integrations.brevo.Brevo.verify_sender", lambda self, email: True)
+    response = client.post(path + "/approve", headers=auth)
+    assert response.status_code == 200, response.text
+    assert response.json()["total_recipients"] == 1
+    assert client.put(path, headers=auth, json={**campaign_data, "subject": "Changed"}).status_code == 409
+    assert client.post(path + "/approve", headers=auth).status_code == 409
+    listed = client.get("/campaigns", headers=auth).json()[0]
+    assert listed["total_recipients"] == 1 and listed["delivered_count"] == 0
+
+def test_settings_never_return_service_keys(client, auth, db):
+    from backend.app.security import encrypt
+    settings = db.get(Settings, 1)
+    settings.brevo_key = encrypt("do-not-expose-this-key")
+    db.commit()
+    response = client.get("/settings", headers=auth)
+    assert response.status_code == 200
+    assert "do-not-expose-this-key" not in response.text and "brevo_key" not in response.json()
+    assert response.json()["brevo_configured"] is True
+
+def test_unknown_input_fields_and_negative_limits_rejected(client, auth, campaign_data):
+    assert client.post("/campaigns", headers=auth, json={**campaign_data, "approved_by": 1}).status_code == 422
+    assert client.post("/campaigns", headers=auth, json={**campaign_data, "daily_limit": 0}).status_code == 422
+
+def test_signed_unsubscribe_is_one_click_and_deduplicated(client, auth, contact, campaign_data, db):
+    prepared(client, auth, contact, campaign_data, db)
+    message = db.scalar(select(Message))
+    path = "/unsubscribe/" + message.id + "?token=" + unsubscribe_token(message.id)
+    for _ in range(2):
+        assert client.post(path, data={"List-Unsubscribe": "One-Click"}).status_code == 200
+    assert client.get("/analytics", headers=auth).json()["events"]["unsubscribed"] == 1

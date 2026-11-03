@@ -1,5 +1,5 @@
 from datetime import datetime
-from zoneinfo import ZoneInfo
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator, ConfigDict
 from .policy import validate_consent, validate_template
 
@@ -84,7 +84,10 @@ class SettingsInput(Strict):
     brevo_key: str | None = Field(default=None, max_length=500)
     @model_validator(mode="after")
     def valid(self):
-        ZoneInfo(self.timezone)
+        try:
+            ZoneInfo(self.timezone)
+        except ZoneInfoNotFoundError:
+            raise ValueError("Unknown IANA timezone")
         if self.start_hour >= self.end_hour:
             raise ValueError("Sending hours must be an increasing same-day window")
         return self

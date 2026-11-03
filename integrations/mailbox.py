@@ -13,7 +13,7 @@ def poll():
     cfg = config()
     if not (cfg.mailbox_host and cfg.mailbox_user and cfg.mailbox_password):
         return
-    with imaplib.IMAP4_SSL(cfg.mailbox_host, cfg.mailbox_port) as mailbox:
+    with imaplib.IMAP4_SSL(cfg.mailbox_host, cfg.mailbox_port, timeout=20) as mailbox:
         mailbox.login(cfg.mailbox_user, cfg.mailbox_password)
         mailbox.select(cfg.mailbox_folder, readonly=True)
         validity = mailbox.response("UIDVALIDITY")[1][0].decode()

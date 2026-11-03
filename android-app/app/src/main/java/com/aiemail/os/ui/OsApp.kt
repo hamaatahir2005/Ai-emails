@@ -34,7 +34,7 @@ fun OsApp(vm: OsViewModel = hiltViewModel()) {
     LaunchedEffect(signedIn) {
         if (signedIn) lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
-                vm.refresh()
+                vm.poll()
                 delay(30_000)
             }
         }

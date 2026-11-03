@@ -77,7 +77,9 @@ class OsViewModel @Inject constructor(val repo: Repository, @ApplicationContext 
         }
     }
     suspend fun refreshNow(days: Int) { repo.refresh(days) }
-    fun refresh(days: Int = 30) = runTask { repo.refresh(days) }
+    private var selectedDays = 30
+    fun poll() = runTask { repo.refreshMetrics(selectedDays) }
+    fun refresh(days: Int = selectedDays) = runTask { selectedDays = days; repo.refresh(days) }
     fun search(q: String, category: String, segment: String, offset: Int = 0) = runTask {
         val rows = repo.api.customers(q, category, segment, offset)
         customers.value = if (offset == 0) rows else customers.value + rows
@@ -127,11 +129,14 @@ class OsViewModel @Inject constructor(val repo: Repository, @ApplicationContext 
         info.value = "Saved"
     }
     fun preview(id: Int, customer: Int) = runTask { preview.value = repo.api.action(id, "preview", obj("customer_id" to customer)) }
-    fun generate(id: Int, language: String, instruction: String) = runTask {
-        preview.value = repo.api.generate(obj("campaign_id" to id, "language" to language, "instruction" to instruction))
+    fun generate(id: Int, language: String, instruction: String, customerId: Int? = null) = runTask {
+        preview.value = repo.api.generate(obj("campaign_id" to id, "language" to language, "instruction" to instruction, "customer_id" to customerId))
     }
     fun loadSettings() = runTask { settings.value = repo.api.settings() }
     fun saveSettings(data: JsonObject) = runTask { repo.api.saveSettings(data); settings.value = repo.api.settings(); info.value = "Settings saved" }
+    fun messageStatus(id: Int) = runTask {
+        history.value = GsonBuilder().setPrettyPrinting().create().toJson(repo.api.messages(id))
+    }
     fun stop() = runTask { repo.api.stop(); repo.refresh(); info.value = "Emergency stop activated" }
     fun password(old: String, new: String) = runTask {
         repo.api.password(mapOf("old_password" to old, "new_password" to new))

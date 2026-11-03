@@ -1,0 +1,11 @@
+.git
+.env
+.env.*
+!.env.example
+secrets
+.venv
+**/__pycache__
+android-app
+**/build
+*.jks
+*.keystore

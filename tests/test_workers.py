@@ -126,3 +126,50 @@ def test_followup_created_only_after_acceptance(db, contact, campaign_data, monk
     followup = db.scalar(select(Message).where(Message.sequence == 1))
     assert followup is not None
     assert followup.due_at > now() + timedelta(days=2)
+
+def test_provider_and_campaign_caps_take_lower_limit(db):
+    settings = db.get(Settings, 1)
+    settings.daily_limit, settings.provider_daily_limit = 300, 2
+    campaign = type("Campaign", (), {"id": 1, "daily_limit": 1})()
+    assert reserve(db, settings, campaign, now())
+    assert not reserve(db, settings, campaign, now())
+    other = type("Campaign", (), {"id": 2, "daily_limit": 300})()
+    assert reserve(db, settings, other, now())
+    assert not reserve(db, settings, other, now())
+
+def test_unsubscribe_prevents_background_delivery(db, contact, campaign_data, monkeypatch):
+    from backend.app.services import suppress
+    message_id, _ = setup_campaign(db, contact, campaign_data, monkeypatch)
+    suppress(db, db.scalar(select(Customer)), "unsubscribed")
+    db.commit()
+    calls = []
+    monkeypatch.setattr("workers.tasks.Brevo.send", lambda self, **kwargs: calls.append(kwargs))
+    send_message.run(message_id)
+    assert not calls
+
+def test_reply_stops_queued_followup(db, contact, campaign_data, monkeypatch):
+    message_id, _ = setup_campaign(db, contact, campaign_data, monkeypatch)
+    message = db.get(Message, message_id)
+    recipient = db.get(Recipient, message.recipient_id)
+    recipient.replied_at = now()
+    db.commit()
+    send_message.run(message_id)
+    db.expire_all()
+    assert db.get(Message, message_id).state == "suppressed"
+
+def test_pause_between_reservation_and_provider_call_keeps_message_for_resume(db, contact, campaign_data, monkeypatch):
+    import workers.tasks as tasks
+    message_id, campaign_id = setup_campaign(db, contact, campaign_data, monkeypatch)
+    original = tasks.deliver_claimed
+    def pause_before_call(claimed_id):
+        with Session.begin() as session:
+            locked_settings(session)
+            session.get(Campaign, campaign_id).status = "paused"
+        original(claimed_id)
+    monkeypatch.setattr(tasks, "deliver_claimed", pause_before_call)
+    calls = []
+    monkeypatch.setattr("workers.tasks.Brevo.send", lambda self, **kwargs: calls.append(kwargs))
+    send_message.run(message_id)
+    db.expire_all()
+    assert not calls
+    assert db.get(Message, message_id).state == "queued"
