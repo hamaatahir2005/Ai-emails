@@ -187,3 +187,20 @@ def test_celery_worker_executes_delivery_from_redis_broker(db, contact, campaign
         result.get(timeout=20, disable_sync_subtasks=False)
     db.expire_all()
     assert db.get(Message, message_id).state == "accepted"
+
+def test_midnight_boundary_requires_a_new_committed_daily_reservation(db, contact, campaign_data, monkeypatch):
+    import workers.tasks as tasks
+    message_id, _ = setup_campaign(db, contact, campaign_data, monkeypatch)
+    original = tasks.deliver_claimed
+    def cross_day_before_call(claimed_id):
+        with Session.begin() as session:
+            locked_settings(session)
+            session.get(Message, claimed_id).sent_at = now() - timedelta(days=1)
+        original(claimed_id)
+    monkeypatch.setattr(tasks, "deliver_claimed", cross_day_before_call)
+    calls = []
+    monkeypatch.setattr("workers.tasks.Brevo.send", lambda self, **kwargs: calls.append(kwargs))
+    send_message.run(message_id)
+    db.expire_all()
+    assert not calls
+    assert db.get(Message, message_id).state == "queued"

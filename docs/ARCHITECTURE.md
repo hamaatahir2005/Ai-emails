@@ -47,6 +47,8 @@ The provider itself remains authoritative: 429 and credential/account errors are
 This service cannot account for email sent independently from other applications sharing the provider account.
 Use a dedicated sender account and keep operational quota settings accurate.
 
+If dispatch crosses local midnight after reservation, the message is requeued so a reservation for the new day commits before any provider request. Limits measure outbound attempts, not the later timestamps of delivery events.
+
 Changing sending timezone after scheduling or ledger use is rejected. This prevents a timezone change from creating an extra sending day.
 Per-minute counters count attempts conservatively and need Redis persistence. PostgreSQL ledger is authoritative for daily limits.
 

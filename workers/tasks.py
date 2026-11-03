@@ -119,6 +119,13 @@ def deliver_claimed(message_id):
         if not in_window(settings, now()):
             message.state = "queued"
             return
+        from zoneinfo import ZoneInfo
+        zone = ZoneInfo(settings.timezone)
+        if message.sent_at.astimezone(zone).date() != now().astimezone(zone).date():
+            # The committed reservation belongs to the prior local day.
+            # Requeue so a fresh current-day reservation commits before I/O.
+            message.state = "queued"
+            return
         if campaign.approval_digest != digest(campaign):
             message.state = "uncertain"
             pause(db, campaign, "Approved content changed before dispatch")
