@@ -106,12 +106,12 @@ def google_login(data: GoogleLogin, request: Request, db=Depends(database)):
     if not challenge:
         raise HTTPException(401, "Expired or already used Google sign-in challenge")
     from integrations.google_auth import verify_identity
-    from google.auth.exceptions import TransportError
+    from google.auth.exceptions import TransportError, GoogleAuthError
     try:
         identity = verify_identity(data.id_token, config().google_web_client_id, data.nonce)
     except TransportError:
         raise HTTPException(503, "Google verification temporarily unavailable")
-    except ValueError:
+    except (ValueError, GoogleAuthError):
         raise HTTPException(401, "Invalid Google sign-in")
     # Provisioning is intentional; signing into any Google account must never
     # grant access to the organization's customer database.

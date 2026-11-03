@@ -58,7 +58,7 @@ def test_real_signature_login_links_preprovisioned_user(client, db, google):
 
 @pytest.mark.parametrize("changes", [
     {"email_verified": False}, {"aud": "another-client.apps.googleusercontent.com"},
-    {"iss": "https://attacker.example"}, {"nonce": "different-signed-nonce"},
+    {"iss": "https://attacker.example"}, {"nonce": "different-signed-nonce"}, {"nonce": "کوردی-nonce"},
     {"exp": 1000}, {"sub": ""}, {"hd": None}
 ])
 def test_google_rejects_invalid_identity_claims(client, google, changes):

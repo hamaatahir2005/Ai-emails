@@ -14,7 +14,7 @@ def verify_identity(encoded_token, audience, nonce):
     if claims.get("aud") != audience or claims.get("email_verified") is not True:
         raise InvalidGoogleIdentity("Invalid audience or unverified email")
     signed_nonce = claims.get("nonce")
-    if not isinstance(signed_nonce, str) or not hmac.compare_digest(signed_nonce, nonce):
+    if not isinstance(signed_nonce, str) or not hmac.compare_digest(signed_nonce.encode("utf-8"), nonce.encode("utf-8")):
         raise InvalidGoogleIdentity("Nonce mismatch")
     subject, address = claims.get("sub"), claims.get("email")
     if not isinstance(subject, str) or not 1 <= len(subject) <= 255 or not isinstance(address, str):
