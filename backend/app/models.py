@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import String, Text, Integer, Boolean, DateTime, Date, ForeignKey, UniqueConstraint, JSON
+from sqlalchemy import String, Text, Integer, Boolean, DateTime, Date, ForeignKey, UniqueConstraint, JSON, Index
 from sqlalchemy.orm import Mapped, mapped_column
 from .db import Base
 
@@ -36,6 +36,7 @@ class Settings(Base):
 
 class Customer(Base):
     __tablename__ = "customers"
+    __table_args__ = (Index("ix_customers_segment", "segment"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     full_name: Mapped[str] = mapped_column(String(200))
     email: Mapped[str] = mapped_column(String(320), unique=True)
@@ -86,7 +87,7 @@ class Recipient(Base):
 
 class Message(Base):
     __tablename__ = "messages"
-    __table_args__ = (UniqueConstraint("recipient_id", "sequence"),)
+    __table_args__ = (UniqueConstraint("recipient_id", "sequence"), Index("ix_messages_state_due", "state", "due_at"))
     id: Mapped[str] = mapped_column(String(36), primary_key=True)
     recipient_id: Mapped[int] = mapped_column(ForeignKey("recipients.id", ondelete="CASCADE"))
     sequence: Mapped[int] = mapped_column(default=0)
@@ -105,6 +106,7 @@ class DailyUsage(Base):
 
 class Event(Base):
     __tablename__ = "events"
+    __table_args__ = (Index("ix_events_kind_time", "kind", "occurred_at"),)
     id: Mapped[str] = mapped_column(String(64), primary_key=True)
     message_id: Mapped[str] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"))
     kind: Mapped[str] = mapped_column(String(30))
