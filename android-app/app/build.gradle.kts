@@ -8,9 +8,13 @@ plugins {
 if (file("google-services.json").exists()) {
     apply(plugin = "com.google.gms.google-services")
 }
-val backendUrl = providers.gradleProperty("BACKEND_URL").orElse("https://localhost/").get()
+val backendUrl = providers.gradleProperty("BACKEND_URL").orElse(providers.environmentVariable("BACKEND_URL")).orElse("https://localhost/").get()
 require(backendUrl.startsWith("https://") && backendUrl.endsWith("/")) { "BACKEND_URL must be HTTPS with trailing slash" }
 require(!backendUrl.contains('"') && !backendUrl.contains('\\')) { "Invalid BACKEND_URL" }
+val googleWebClientId = providers.gradleProperty("GOOGLE_WEB_CLIENT_ID").orElse(providers.environmentVariable("GOOGLE_WEB_CLIENT_ID")).orElse("").get()
+require(googleWebClientId.isEmpty() || googleWebClientId.matches(Regex("[0-9]+-[A-Za-z0-9_-]+\\.apps\\.googleusercontent\\.com"))) {
+    "GOOGLE_WEB_CLIENT_ID must be the public Web OAuth client ID"
+}
 android {
     namespace = "com.aiemail.os"
     compileSdk = 35
@@ -21,6 +25,7 @@ android {
         versionCode = 1
         versionName = "1.0.0"
         buildConfigField("String", "BACKEND_URL", "\"$backendUrl\"")
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
         testInstrumentationRunner = "com.aiemail.os.TestRunner"
         ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64") }
     }
@@ -53,6 +58,9 @@ dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2025.04.01")
     implementation(composeBom)
     androidTestImplementation(composeBom)
+    implementation("androidx.credentials:credentials:1.5.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.5.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.core:core-splashscreen:1.0.1")
     implementation("androidx.activity:activity-compose:1.10.1")

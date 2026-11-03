@@ -89,4 +89,8 @@
     <string name="system_theme">System</string>
     <string name="dark_theme">Dark</string>
     <string name="light_theme">Light</string>
+    <string name="google_sign_in">Continue with Google</string>
+    <string name="google_not_configured">Google sign-in requires configuration by the administrator.</string>
+    <string name="google_no_account">Add a Google account to this device and try again.</string>
+    <string name="google_sign_in_failed">Google sign-in failed. Check Google Play services and OAuth configuration.</string>
 </resources>

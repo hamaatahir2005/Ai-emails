@@ -22,6 +22,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.delay
 import com.aiemail.os.R
+import com.aiemail.os.BuildConfig
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 
 @Composable
 fun OsApp(vm: OsViewModel = hiltViewModel()) {
@@ -97,6 +100,19 @@ fun OsScaffold(onStop: () -> Unit, content: @Composable (Int) -> Unit) {
 
 @Composable
 private fun LoginScreen(vm: OsViewModel) {
+    val context = LocalContext.current
+    val busy by vm.busy.collectAsStateWithLifecycle()
+    LoginForm(
+        googleConfigured = BuildConfig.GOOGLE_WEB_CLIENT_ID.isNotBlank(),
+        busy = busy,
+        onPasswordSignIn = { email, password -> vm.login(email, password) },
+        onGoogleSignIn = { vm.googleLogin(context) }
+    )
+}
+
+@Composable
+fun LoginForm(googleConfigured: Boolean, busy: Boolean = false,
+              onPasswordSignIn: (String, String) -> Unit, onGoogleSignIn: () -> Unit) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(28.dp), verticalArrangement = Arrangement.Center) {
@@ -107,9 +123,19 @@ private fun LoginScreen(vm: OsViewModel) {
         OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text(stringResource(R.string.password)) },
             visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
         Spacer(Modifier.height(16.dp))
-        Button(onClick = { vm.login(email, password); password = "" }, enabled = email.isNotBlank() && password.length >= 12, modifier = Modifier.fillMaxWidth()) {
+        Button(onClick = { onPasswordSignIn(email, password); password = "" }, enabled = !busy && email.isNotBlank() && password.length >= 12, modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.login))
         }
+        Spacer(Modifier.height(16.dp))
+        OutlinedButton(
+            onClick = onGoogleSignIn, enabled = googleConfigured && !busy,
+            modifier = Modifier.fillMaxWidth().testTag("google_sign_in")
+        ) { Text(stringResource(R.string.google_sign_in)) }
+        if (!googleConfigured) Text(
+            stringResource(R.string.google_not_configured),
+            style = MaterialTheme.typography.bodySmall,
+            modifier = Modifier.padding(top = 8.dp)
+        )
     }
 }
 

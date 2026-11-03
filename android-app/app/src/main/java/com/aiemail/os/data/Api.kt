@@ -7,6 +7,8 @@ import retrofit2.http.*
 
 interface Api {
     @POST("auth/login") suspend fun login(@Body data: Map<String, String>): JsonObject
+    @POST("auth/google/challenge") suspend fun googleChallenge(): JsonObject
+    @POST("auth/google") suspend fun googleLogin(@Body data: Map<String, String>): JsonObject
     @POST("auth/logout") suspend fun logout()
     @POST("auth/password") suspend fun password(@Body data: Map<String, String>)
     @GET("auth/me") suspend fun me(): JsonObject

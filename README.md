@@ -30,6 +30,10 @@ Expected build output, **only after a successful build**:
 The [Validate and build workflow](.github/workflows/ci.yml) uploads the actual APK as artifact `app-debug`.
 [Signed release workflow](.github/workflows/release.yml) uses environment secrets; no signing key is committed.
 
+## Google sign-in
+
+The Android login screen supports Google Credential Manager. The backend validates Google-signed ID tokens with a single-use nonce and admits only preprovisioned organization accounts. Set the public Web OAuth client ID on the backend and APK, register the actual Android signing SHA-1, and follow [Google sign-in setup](docs/GOOGLE_SIGN_IN.md). Google sign-in requires a live HTTPS backend and does not grant Gmail sending permissions.
+
 ## Components
 
 | Directory | Contents |

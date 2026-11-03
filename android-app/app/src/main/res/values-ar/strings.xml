@@ -89,4 +89,8 @@
     <string name="system_theme">النظام</string>
     <string name="dark_theme">داكن</string>
     <string name="light_theme">فاتح</string>
+    <string name="google_sign_in">المتابعة باستخدام Google</string>
+    <string name="google_not_configured">يتطلب تسجيل الدخول عبر Google إعدادًا من المسؤول.</string>
+    <string name="google_no_account">أضف حساب Google إلى هذا الجهاز وحاول مجددًا.</string>
+    <string name="google_sign_in_failed">تعذّر تسجيل الدخول عبر Google. تحقق من خدمات Google Play وإعدادات OAuth.</string>
 </resources>

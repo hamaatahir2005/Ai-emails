@@ -13,6 +13,7 @@ class Config(BaseSettings):
     public_url: str = "https://localhost"
     access_token_minutes: int = Field(default=30, ge=5, le=60)
     sending_enabled: bool = False
+    google_web_client_id: str = ""
     gemini_model: str = "gemini-2.5-flash"
     mailbox_host: str = ""
     mailbox_user: str = ""

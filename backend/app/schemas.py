@@ -115,3 +115,7 @@ class Preferences(Strict):
 
 class Reconcile(Strict):
     provider_id: str = Field(min_length=1, max_length=300)
+
+class GoogleLogin(Strict):
+    id_token: str = Field(min_length=20, max_length=8192)
+    nonce: str = Field(min_length=32, max_length=128)

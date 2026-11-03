@@ -27,6 +27,8 @@ def no_real_external_requests(monkeypatch):
         raise AssertionError("Real provider HTTP requests are forbidden in tests")
     monkeypatch.setattr(httpx, "request", forbidden)
     monkeypatch.setattr(httpx, "post", forbidden)
+    import requests
+    monkeypatch.setattr(requests.sessions.Session, "request", forbidden)
 
 @pytest.fixture
 def db():

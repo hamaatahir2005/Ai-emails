@@ -8,8 +8,10 @@ def now():
 
 class User(Base):
     __tablename__ = "users"
+    __table_args__ = (UniqueConstraint("google_sub", name="uq_users_google_sub"),)
     id: Mapped[int] = mapped_column(primary_key=True)
     email: Mapped[str] = mapped_column(String(320), unique=True)
+    google_sub: Mapped[str | None] = mapped_column(String(255))
     password: Mapped[str] = mapped_column(Text)
     role: Mapped[str] = mapped_column(String(20), default="operator")
     disabled: Mapped[bool] = mapped_column(default=False)

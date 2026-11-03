@@ -89,4 +89,8 @@
     <string name="system_theme">سیستەم</string>
     <string name="dark_theme">تاریک</string>
     <string name="light_theme">ڕووناک</string>
+    <string name="google_sign_in">چوونەژوورەوە بە Google</string>
+    <string name="google_not_configured">چوونەژوورەوە بە Google پێویستی بە ڕێکخستنی بەڕێوەبەر هەیە.</string>
+    <string name="google_no_account">هەژماری Google بۆ ئەم ئامێرە زیاد بکە و دووبارە هەوڵ بدەوە.</string>
+    <string name="google_sign_in_failed">چوونەژوورەوە سەرکەوتوو نەبوو. Google Play services و ڕێکخستنەکانی OAuth بپشکنە.</string>
 </resources>

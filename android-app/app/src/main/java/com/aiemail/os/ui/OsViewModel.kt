@@ -5,6 +5,12 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aiemail.os.data.Repository
+import com.aiemail.os.data.GoogleSignIn
+import com.aiemail.os.BuildConfig
+import com.aiemail.os.R
+import androidx.credentials.exceptions.GetCredentialCancellationException
+import androidx.credentials.exceptions.GetCredentialException
+import androidx.credentials.exceptions.NoCredentialException
 import com.google.gson.*
 import com.google.firebase.FirebaseApp
 import com.google.firebase.messaging.FirebaseMessaging
@@ -59,6 +65,31 @@ class OsViewModel @Inject constructor(val repo: Repository, @ApplicationContext 
     }
     fun login(email: String, password: String) = runTask {
         val response = repo.api.login(mapOf("email" to email, "password" to password))
+        finishSignIn(response)
+    }
+    fun googleLogin(activityContext: Context) = runTask {
+        if (BuildConfig.GOOGLE_WEB_CLIENT_ID.isBlank()) {
+            error.value = context.getString(R.string.google_not_configured)
+            return@runTask
+        }
+        val nonce = repo.api.googleChallenge().text("nonce")
+        val identityToken = try {
+            GoogleSignIn.token(activityContext, BuildConfig.GOOGLE_WEB_CLIENT_ID, nonce)
+        } catch (_: GetCredentialCancellationException) {
+            return@runTask
+        } catch (_: NoCredentialException) {
+            error.value = context.getString(R.string.google_no_account)
+            return@runTask
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            error.value = context.getString(R.string.google_sign_in_failed)
+            return@runTask
+        }
+        finishSignIn(repo.api.googleLogin(mapOf("id_token" to identityToken, "nonce" to nonce)))
+    }
+    private suspend fun finishSignIn(response: JsonObject) {
+        repo.cache.clear()
         repo.session.save(response.text("access_token"))
         authenticated.value = true
         repo.refresh()

@@ -10,7 +10,7 @@ from redis import Redis
 from .config import config
 from .db import database
 from .models import User, Settings, Customer, Campaign, Recipient, Message, Suppression, Event, DailyUsage, Device, Counter, Audit, now
-from .schemas import Login, CustomerInput, CampaignInput, Schedule, SettingsInput, Generate, Preview, DeviceInput, PasswordChange, Preferences, Reconcile
+from .schemas import GoogleLogin, Login, CustomerInput, CampaignInput, Schedule, SettingsInput, Generate, Preview, DeviceInput, PasswordChange, Preferences, Reconcile
 from .security import current_user, admin, token, verify_password, hash_password, encrypt, decrypt, email_hash, check_unsubscribe
 from .policy import normalize_email, render, digest
 from .services import locked_settings, audit, notify, suppress, add_customer, import_contacts, prepare_campaign, csv_document
@@ -73,6 +73,58 @@ def login(data: Login, request: Request, db=Depends(database)):
     if not user or not valid or user.disabled:
         raise HTTPException(401, "Invalid credentials")
     audit(db, user, "login")
+    db.commit()
+    return {"access_token": token(user), "token_type": "bearer", "expires_in": config().access_token_minutes * 60, "role": user.role}
+
+
+@app.post("/auth/google/challenge")
+def google_challenge(request: Request):
+    if not config().google_web_client_id:
+        raise HTTPException(503, "Google sign-in is not configured on the server")
+    address = request.client.host if request.client else "unknown"
+    rate_limit("google:challenge:" + address, 20, 300)
+    import secrets
+    nonce = secrets.token_urlsafe(32)
+    key = "google:nonce:" + hashlib.sha256(nonce.encode()).hexdigest()
+    try:
+        Redis.from_url(config().redis_url).set(key, "1", ex=300)
+    except Exception:
+        raise HTTPException(503, "Sign-in service temporarily unavailable")
+    return {"nonce": nonce, "expires_in": 300}
+
+@app.post("/auth/google")
+def google_login(data: GoogleLogin, request: Request, db=Depends(database)):
+    if not config().google_web_client_id:
+        raise HTTPException(503, "Google sign-in is not configured on the server")
+    address = request.client.host if request.client else "unknown"
+    rate_limit("google:login:" + address, 20, 300)
+    key = "google:nonce:" + hashlib.sha256(data.nonce.encode()).hexdigest()
+    try:
+        challenge = Redis.from_url(config().redis_url).getdel(key)
+    except Exception:
+        raise HTTPException(503, "Sign-in service temporarily unavailable")
+    if not challenge:
+        raise HTTPException(401, "Expired or already used Google sign-in challenge")
+    from integrations.google_auth import verify_identity
+    from google.auth.exceptions import TransportError
+    try:
+        identity = verify_identity(data.id_token, config().google_web_client_id, data.nonce)
+    except TransportError:
+        raise HTTPException(503, "Google verification temporarily unavailable")
+    except ValueError:
+        raise HTTPException(401, "Invalid Google sign-in")
+    # Provisioning is intentional; signing into any Google account must never
+    # grant access to the organization's customer database.
+    user = db.scalar(select(User).where(User.email == identity["email"]).with_for_update())
+    if not user or user.disabled:
+        raise HTTPException(403, "This Google account is not authorized for this organization")
+    if user.google_sub is not None and user.google_sub != identity["subject"]:
+        raise HTTPException(403, "Google identity does not match the linked account")
+    if user.google_sub is None:
+        if db.scalar(select(User.id).where(User.google_sub == identity["subject"])):
+            raise HTTPException(403, "Google identity already linked")
+        user.google_sub = identity["subject"]
+    audit(db, user, "google_login")
     db.commit()
     return {"access_token": token(user), "token_type": "bearer", "expires_in": config().access_token_minutes * 60, "role": user.role}
 
