@@ -28,3 +28,13 @@ See GitHub Actions for actual test/build outcomes.
 - Room caches are app-private, not a custom encrypted database. Sensitive tokens use Keystore; service keys live on the backend.
 - Missing FCM/mailbox configuration does not produce fabricated notifications/reply metrics.
 - Production load testing, provider end-to-end validation, real-device accessibility/RTL review and external security review remain deployment tasks.
+
+## Observed build evidence
+
+Commit 800b13ec0533d0b376ceea43515dd9b3b6ea84d9 was built by GitHub Actions run 41705878025:
+- Backend: 38 tests passed; Alembic reported no schema drift.
+- Android: assembleDebug, lintDebug and assembleDebugAndroidTest succeeded.
+- A real app-debug APK artifact was uploaded (artifact ID 13264429730).
+- Emulator navigation validation and subsequent hardening commits require their own final CI result.
+
+Artifact URLs and later test results are available in the pull request checks; do not treat this earlier build as validation of untested later commits.

@@ -16,7 +16,7 @@ python -m pytest tests -q
 ```
 
 CI separately applies the initial migration and checks schema drift, then runs policy, API, worker, adapter and concurrent quota tests.
-The tests cover CSV/XLSX consent/duplicate imports, JWT/role checks/revocation, unapproved scheduling, unsubscribe/deletion/reimport protection, webhook authentication/replay/out-of-order events, daily quota races, rate limiting, retry backoff, uncertain acceptance, scheduler dispatch, worker recovery, approved follow-ups and Gemini/Brevo request contracts.
+The tests cover CSV/XLSX consent/duplicate imports, JWT/role checks/revocation, unapproved scheduling, unsubscribe/deletion/reimport protection, webhook authentication/replay/out-of-order events, daily quota races, rate limiting, retry backoff, uncertain acceptance, scheduler dispatch, actual Celery/Redis broker execution, worker recovery, approved follow-ups and Gemini/Brevo request contracts.
 Adapter tests validate local contracts only. Real provider credentials and configured webhooks/mailbox/FCM require controlled end-to-end testing with developer-owned addresses.
 
 ## Android

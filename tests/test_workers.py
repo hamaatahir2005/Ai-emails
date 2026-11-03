@@ -173,3 +173,17 @@ def test_pause_between_reservation_and_provider_call_keeps_message_for_resume(db
     db.expire_all()
     assert not calls
     assert db.get(Message, message_id).state == "queued"
+
+def test_celery_worker_executes_delivery_from_redis_broker(db, contact, campaign_data, monkeypatch):
+    from celery.contrib.testing.worker import start_worker
+    from workers.celery_app import app
+    from workers.tasks import Redis
+    real_from_url = Redis.from_url
+    message_id, _ = setup_campaign(db, contact, campaign_data, monkeypatch)
+    monkeypatch.setattr(Redis, "from_url", real_from_url)
+    monkeypatch.setattr("workers.tasks.Brevo.send", lambda self, **kwargs: "<broker-test@example.com>")
+    with start_worker(app, pool="solo", concurrency=1, perform_ping_check=False):
+        result = send_message.delay(message_id)
+        result.get(timeout=20, disable_sync_subtasks=False)
+    db.expire_all()
+    assert db.get(Message, message_id).state == "accepted"
